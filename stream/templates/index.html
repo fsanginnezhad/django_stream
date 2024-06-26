@@ -1,0 +1,182 @@
+<!-- stream/templates/index.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone Camera Stream</title>
+</head>
+<body>
+    <h1>Phone Camera Stream</h1>
+    <video id="video" autoplay></video>
+    <img id="frame" src="" alt="Video Stream">
+    <script>
+        const video = document.getElementById('video');
+        const frame = document.getElementById('frame');
+        
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+                const socket = new WebSocket('ws://' + window.location.host + '/ws/video/');
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+
+                socket.onmessage = function(event) {
+                    frame.src = 'data:image/jpeg;base64,' + event.data;
+                };
+
+                video.addEventListener('loadedmetadata', () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+
+                    function sendFrame() {
+                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const dataURL = canvas.toDataURL('image/jpeg');
+                        socket.send(dataURL);
+                        requestAnimationFrame(sendFrame);
+                    }
+
+                    sendFrame();
+                });
+            })
+            .catch(err => console.error(err));
+    </script>
+</body>
+</html> -->
+
+
+<!-- stream/templates/index.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone Camera Stream</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            margin-top: 20px;
+        }
+        #controls {
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 5px;
+        }
+        #status {
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        video, img {
+            max-width: 100%;
+            height: auto;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Phone Camera Stream</h1>
+    <div id="controls">
+        <button id="startButton">Start Stream</button>
+        <button id="stopButton" disabled>Stop Stream</button>
+    </div>
+    <div id="status">Status: Disconnected</div>
+    <video id="video" autoplay style="display: none;"></video>
+    <img id="frame" src="" alt="Video Stream">
+    <script>
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const status = document.getElementById('status');
+        const video = document.getElementById('video');
+        const frame = document.getElementById('frame');
+        
+        let socket = null;
+        let stream = null;
+
+        function updateStatus(message) {
+            status.textContent = `Status: ${message}`;
+        }
+
+        function startStream() {
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(mediaStream => {
+                    stream = mediaStream;
+                    video.srcObject = stream;
+                    video.style.display = 'block';
+                    
+                    socket = new WebSocket('ws://' + window.location.host + '/ws/video/');
+                    
+                    socket.onopen = () => {
+                        updateStatus('Connected');
+                        startButton.disabled = true;
+                        stopButton.disabled = false;
+                        sendFrame();
+                    };
+                    
+                    socket.onmessage = event => {
+                        frame.src = 'data:image/jpeg;base64,' + event.data;
+                    };
+                    
+                    socket.onerror = error => {
+                        console.error('WebSocket error:', error);
+                        updateStatus('Error');
+                    };
+                    
+                    socket.onclose = () => {
+                        updateStatus('Disconnected');
+                        startButton.disabled = false;
+                        stopButton.disabled = true;
+                    };
+                })
+                .catch(err => {
+                    console.error('Error accessing webcam:', err);
+                    updateStatus('Error accessing webcam');
+                });
+        }
+
+        function stopStream() {
+            if (socket) {
+                socket.close();
+            }
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                video.style.display = 'none';
+                updateStatus('Disconnected');
+            }
+            startButton.disabled = false;
+            stopButton.disabled = true;
+        }
+
+        function sendFrame() {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            function captureFrame() {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const dataURL = canvas.toDataURL('image/jpeg');
+                    socket.send(dataURL);
+                    requestAnimationFrame(captureFrame);
+                }
+            }
+
+            captureFrame();
+        }
+
+        startButton.addEventListener('click', startStream);
+        stopButton.addEventListener('click', stopStream);
+    </script>
+</body>
+</html>
